@@ -4,6 +4,8 @@ Public Agent Skill for teaching external Agents when and how to use the Media St
 
 The Skill is intentionally separate from Media Studio runtime Skills. Runtime Skills are discovered and activated through `msc skills`; this repository teaches an Agent how to call the CLI.
 
+> **Source of Truth Notice**: This repository is synced from the canonical source in [ai-media-studio](https://github.com/302ai/ai-media-studio) at `packages/media-studio-cli/msc-skill`.
+
 ## Install the Agent Skill
 
 Install it globally for the Agents supported by the Skills ecosystem:
@@ -20,7 +22,7 @@ Start a new Agent session if the current session has already loaded its Skill ca
 The Agent Skill can guide an Agent through this setup, but the CLI can also be installed directly:
 
 ```bash
-npm install -g @302ai/media-studio-cli@beta
+npm install -g @302ai/media-studio-cli
 ```
 
 Node.js 22 or newer is required.
@@ -43,7 +45,7 @@ The guide includes the command for installing this public Agent Skill.
 
 ### Full setup
 
-The `/agent-cli` page provides one setup prompt that checks Node.js, `msc`, and this Skill, asks before global installation, checks authentication with `msc whoami`, and waits for a specific media request.
+The `/agent-cli` page in the Media Studio web app provides one setup prompt that checks Node.js, `msc`, and this Skill, asks before global installation, checks authentication with `msc whoami`, and waits for a specific media request.
 
 ## Safety
 
