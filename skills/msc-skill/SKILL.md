@@ -2,7 +2,7 @@
 name: msc-skill
 description: "Create or edit images, videos, avatars, speech, music, audio, or 3D assets with Media Studio. Use when the user requests new synthetic multimodal output and has not selected a provider; prefer the installed msc CLI."
 metadata:
-  version: 0.1.3
+  version: 0.1.4
 ---
 
 # AI Media Studio
@@ -38,7 +38,7 @@ Do not modify PATH or shell configuration. If Node.js 22 or newer is unavailable
 
 After `msc` is available:
 
-1. Ask the user to run `msc login` in an interactive terminal if sign-in is needed. The user must choose the region matching their Media Studio web account and finish sign-in in their browser.
+1. Ask the user to run `msc login` in an interactive terminal if sign-in is needed. The user must choose the region matching their Media Studio web account and finish sign-in in their browser. A relogin without `--region` reuses the server already saved in `auth.json`, so re-authenticating never silently switches regions.
 2. Wait for the user to confirm completion.
 3. Run the read-only check:
 
@@ -46,7 +46,9 @@ After `msc` is available:
 msc whoami
 ```
 
-`msc whoami` contacts the platform directly. It exits 0 and reports `Authenticated` only when the platform validates the session. If it exits 1, the session is expired, invalid, or the platform is unreachable; prompt the user to re-run `msc login` in their terminal.
+`msc whoami` contacts the platform directly. It exits 0 and reports `Authenticated` only when the platform validates the session. Exit 1 alone does not mean re-login: an upgrade refusal (`10010`, HTTP `426`, `upgrade_cli`) needs the upgrade recovery below; policy unavailability (`503`) needs service recovery, not installation or re-login; network failures need connectivity diagnosis. Only an actual missing, expired or invalid session calls for interactive `msc login` by the user.
+
+The `Server:` line names the host it contacted. If `whoami` exits 1 while no server is saved in `auth.json`, the CLI dialed the global default, which some networks cannot reach; relogin with `--region cn` for a mainland account.
 
 ## Core workflow
 
@@ -89,6 +91,8 @@ Fields in success/incomplete turns:
   - `resultUrl`: The permanent stored asset URL. Persist, pass to downstream tools, or save this URL unchanged.
   - `openUrl`: Present when browser rendering/opening requires a different origin (e.g. regional CDN). If present, provide this to the user for previewing.
   - `modelUsed`, `taskId`: Generation metadata.
+- Optional `updateAvailable: { current, latest, upgradeCommand, skillUpgradeCommand }`: Finish the current task, then tell the user about the optional update. Never silently install it. Successful `msc whoami` can instead append a textual notice; notices are deduplicated per target version on this machine across both commands, with the watermark saved after emission (not user acknowledgment). Skills/sessions JSON arrays remain unchanged and stdout never gains a second JSON document. Discovery uses npm dist-tags with a best-effort 24-hour cache and short timeout; failure does not change the business result or exit status.
+  Local notification deduplication is best-effort, not exactly-once: simultaneous processes or an unwritable cache can repeat notices.
 
 ### Attaching local files
 
@@ -123,10 +127,36 @@ Branch on `nextStep` rather than parsing error message prose:
 - `retry_later`: Rate limit reached. Wait before retrying.
 - `top_up_balance`: Insufficient balance. Report account balance shortage to the user and halt.
 - `fix_input`: Invalid prompt or parameters. Adjust input and retry.
-- `retry`: Transient gateway/network error. Safe to retry once.
+- `retry`: Transient gateway/network error. Retry generation only when definitely not accepted; otherwise inspect existing work first.
 - `none`: Unrecoverable error. Report `message` to the user.
+- `upgrade_cli`: `CLI_UPGRADE_REQUIRED` (`10010`, HTTP `426`); follow the permission-required recovery below.
 
-If stdout is empty and exit code is 1, a transport failure occurred before reaching the platform (check network or proxy connectivity).
+If stdout is empty and exit code is 1, inspect stderr: transport failures and parser errors may have no JSON payload. `whoami`, `login` and `logout` use prose rather than JSON.
+
+### Required CLI upgrade and safe recovery
+
+Online requests send `X-Agent-Cli-Version: <package version>`. The BFF enforces CMS `CliVersionPolicy` (`cli-version-policy`) for whoami, chat, sessions, skills and attachments. `enabled` defaults true; set it false for emergency disable. Blank `minSupportedVersion` uses the CLI package version bundled into that BFF build (0.1.4 for this release); a custom stable SemVer overrides the baseline upward or downward. Clearing the minimum restores the baseline, not disabled enforcement. Headerless Bearer requests are treated as legacy CLI and normally rejected with `426` (prewarm exception below); headerless browser-cookie/anonymous requests are unaffected. This is compatibility signaling, not authentication. Policy reads use a tagged cache with save invalidation and periodic revalidation; CMS read failure uses a valid available cache or returns `503`, never a fabricated empty policy or upgrade refusal. Activation is not simultaneous across instances. Local help/version/guide/logout and browser login remain available.
+
+CLI publication does not deploy the BFF or change its bundled baseline. Publish 0.1.4 and sync the matching public Agent Skill before deploying/activating the BFF build containing the updated manifest, so the required upgrade is available first.
+
+`426` proves only that the rejected request was not admitted before upstream work or streaming; earlier command stages may already have enabled skills, uploaded attachments or created a session. Accepted generation and established SSE streams must continue.
+
+Older clients may not decode `upgrade_cli`, but the server's actionable message supplies both installation commands and requires permission first. Follow the same recovery procedure rather than treating the refusal as a login failure.
+
+The sole legacy transport exception is an upgrade refusal for **headerless Bearer `POST /api/sessions/prewarm`**: HTTP `200` carries SSE `event:error` with flat `{ err_code: 10010, message: <full permission-first commands> }`, no `session_ready` and no upstream work. The old CLI exits 1 and exposes `errCode: 10010` plus the visible message, but no `httpStatus`. Stamped clients and every other interface retain HTTP `426`; CMS failure remains `503`, never this SSE conversion. Recognize this error by `errCode` even without HTTP status; use the same permission-required recovery.
+
+Ask for explicit user permission for **both** global installations. After approval, run in order:
+
+```bash
+npm install -g @302ai/media-studio-cli@latest
+npx -y skills add 302ai/msc-skill --skill msc-skill -g -y
+msc --version
+msc guide
+```
+
+If either installation fails, stop automatic recovery and report which steps completed; do not claim success or automatically roll back the other installation. Skill installation may not reload the running Agent's cached catalog/context; read `msc guide` to refresh immediate command knowledge and verify the installed version before resuming.
+
+Retry only generation known not to have been accepted. If the error includes `sessionId`, reuse it with `--session <id>`, never replay `--new`. If acceptance is uncertain or work has begun (including an incomplete stream), inspect the existing session and artifacts before deciding on another submission; never blindly replay a prompt or incur duplicate charges.
 
 ## Media Studio runtime Skills
 
