@@ -2,7 +2,7 @@
 name: msc-skill
 description: "Create or edit images, videos, avatars, speech, music, audio, or 3D assets with Media Studio. Use when the user requests new synthetic multimodal output and has not selected a provider; prefer the installed msc CLI."
 metadata:
-  version: 0.1.4
+  version: 0.1.5
 ---
 
 # AI Media Studio
