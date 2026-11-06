@@ -2,7 +2,7 @@
 name: msc-skill
 description: "Create or edit images, videos, avatars, speech, music, audio, or 3D assets with Media Studio. Use when the user requests new synthetic multimodal output and has not selected a provider; prefer the installed msc CLI."
 metadata:
-  version: 0.1.6-beta.0
+  version: 0.1.6-beta.1
   channel: beta
 ---
 
@@ -116,8 +116,8 @@ The output is a JSON object with one of three `status` values:
 
 Fields in success/incomplete turns:
 - `sessionId`: The session identifier upstream.
-- `text`: Model commentary, planning, or explanation.
-- `steps`: Milestone progress strings.
+- `text`: Model commentary, planning, explanation, or a pending `AskUserQuestion` with numbered options. When questions are present, show them to the user and send the user's explicit answer in the next `msc chat` turn; never select the recommended option automatically or treat the completed stream as approval.
+- `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`.
 - `media`: Array of generated assets. Each item has:
   - `status`: `"completed"`
   - `domain`: `"image"`, `"video"`, `"audio"`, etc.
