@@ -43,6 +43,8 @@ Once `msc` is available, read `msc guide` and check authentication:
 msc whoami
 ```
 
+`msc doctor` reports whether the installed CLI matches its channel's dist-tag, how many distinct `msc` installations PATH resolves (and which one wins), and whether it lives under npm's global prefix. A development build is not compared with npm nor checked against the global prefix. It needs no login and changes no credentials, sessions or installation; it refreshes the update-check cache.
+
 `msc whoami` has **no `--json` flag**. It contacts the platform directly, exits 0 and reports `Authenticated` only when the platform validates the session. Exit 1 alone does not mean re-login: an upgrade refusal (`10010`, HTTP `426`, `upgrade_cli`) needs the upgrade recovery below; policy unavailability (`503`) needs service recovery, not installation or re-login; network failures need connectivity diagnosis. Only an actual missing, expired or invalid session calls for user-authorized login. The `Server:` line names the host contacted.
 
 For user-authorized login:
@@ -91,7 +93,7 @@ The output is a JSON object with one of three `status` values:
 Fields in success/incomplete turns:
 - `sessionId`: The session identifier upstream.
 - `text`: Model commentary, planning, explanation, or a pending `AskUserQuestion` with numbered options. When questions are present, show them to the user and send the user's explicit answer in the next `msc chat` turn; never select the recommended option automatically or treat the completed stream as approval.
-- `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`.
+- `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`. Milestone bodies follow the installed site's language; only the `[step]`/`[result]` prefix and toolCallId are stable.
 - `media`: Array of generated assets. Each item has:
   - `status`: `"completed"`
   - `domain`: `"image"`, `"video"`, `"audio"`, etc.
