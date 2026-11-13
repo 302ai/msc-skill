@@ -6,7 +6,7 @@ The Skill is intentionally separate from Media Studio runtime Skills. Runtime Sk
 
 The public repository `302ai/msc-skill` distributes both channels: `main` is stable and `beta` is opt-in. A verified CLI release syncs the Skill from the release's source commit to the branch matching its npm dist-tag (`latest` to `main`, `beta` to `beta`); pushing source `main` alone does not sync it. A manual sync supports Skill-only updates, promotion, and recovery when the source CLI version matches the selected live npm dist-tag.
 
-Each published Skill declares its channel in `metadata.channel`. Both variants use the same `msc-skill` name, and both CLI variants use the same global package, so installing another channel replaces the existing Skill or CLI respectively. Channel changes require explicit user permission; do not infer the channel from the CLI version, since npm `beta` may point to a stable version.
+Each published Skill declares its distribution channel in `metadata.channel`; it does not select the CLI's site. The two CLI packages share the `msc` executable, and Skill variants share the `msc-skill` name. The test site has only the global `@beta` package; there is no CN beta. Installing or switching either requires explicit user permission; preserve user work, but sign in again after installing or upgrading because each package and channel keeps a separate config directory and legacy credentials are not read.
 
 ## Install the Agent Skill
 
@@ -16,7 +16,7 @@ Install the stable Skill globally for the Agents supported by the Skills ecosyst
 npx -y skills add 302ai/msc-skill --skill msc-skill -g -y
 ```
 
-For the opt-in beta Skill, use:
+For testing on the staging site, use the beta Skill:
 
 ```bash
 npx -y skills add https://github.com/302ai/msc-skill/tree/beta --skill msc-skill -g -y
@@ -26,25 +26,21 @@ Start a new Agent session if the current session has already loaded its Skill ca
 
 ## Install the CLI
 
-The Agent Skill can guide an Agent through setup. To install the stable CLI directly:
+Use the install command provided by the `/agent-cli` page on the Media Studio site you intend to use:
 
-```bash
-npm install -g @302ai/media-studio-cli@latest
-```
+| Site | Command |
+| --- | --- |
+| `https://media.302.ai` | `npm install -g @302ai/media-studio-cli@latest` |
+| `https://media.302ai.cn` | `npm install -g @302ai/media-studio-cli-cn@latest` |
+| `https://media.tool302.com` (testing only) | `npm install -g @302ai/media-studio-cli@beta` |
 
-For the opt-in beta CLI:
-
-```bash
-npm install -g @302ai/media-studio-cli@beta
-```
-
-Node.js 22 or newer is required.
+Node.js 22 or newer is required. Published packages do not target localhost; local development requires a matching local build.
 
 ## Bootstrap from either side
 
 ### Skill-only
 
-When the Skill is active but `msc` is missing, the Agent should select the CLI command matching the Skill's `metadata.channel` and ask for permission before running it. Reinstalls and channel switches also require permission. It must not run `msc login` or generate media automatically.
+When the Skill is active but `msc` is missing, use the site's copied setup instruction and ask for permission before installing its CLI. Reinstalls and package or channel switches also require permission. Obtaining a login link does not authenticate or generate media; authentication requires the user's one-time code. Do not generate media without a specific request.
 
 ### CLI-only
 
@@ -54,37 +50,22 @@ After installing the CLI, read the Agent-facing manual:
 msc guide
 ```
 
-The guide includes commands for both public Agent Skill channels.
+The guide identifies the installed package, channel and site and provides its recommended Skill command.
 
 ### Full setup
 
-The `/agent-cli` page displays `Set up <origin>/SKILL.md` but copies expanded setup, account, conditional trial-credit, and authentication guidance. If copying fails, a dialog provides the full text for manual selection. The app serves [the canonical Skill](./skills/msc-skill/SKILL.md) at that same-origin URL as part of its build, independently of public repository sync; this source defaults to stable. The Skill checks Node.js, `msc`, and Agent Skill availability, asks before global installation, checks authentication with `msc whoami`, and waits for a specific media request. The user completes any browser login in their own terminal. A newly installed Skill may require a new Agent session; the current session can follow the Skill and `msc guide`.
+The `/agent-cli` page displays `Set up <origin>/SKILL.md` but copies the browser site's install command and expanded setup, account, conditional trial-credit, and authentication guidance. If copying fails, a dialog provides the full text for manual selection. The app serves [the canonical Skill](./skills/msc-skill/SKILL.md) at the same-origin URL with no shared caching. The Skill compares the installed CLI's package, channel and site from `msc guide` against the copied instruction before any online command, asks before installing or switching, and waits for a specific media request. The user completes website sign-in in their browser. A newly installed Skill may require a new Agent session; the current session can follow the Skill and `msc guide`.
+
+For authentication, `msc login --json` exits 2 with `status: "authorization_required"` and one `sites[0].authorizationUrl`. The user opens that link, signs in if needed, and shares the displayed one-time code. Pass it to `msc login --with-code --json` through stdin/EOF and check `msc whoami` (which has no `--json` flag).
+
+Codes expire in five minutes and work once. Generating another code does not invalidate earlier unused codes. Chat or Agent tools may retain a pasted code; keep it out of command arguments, environment variables, files and logs. Never copy `auth.json`.
 
 ## Required and optional updates
 
-Agents must finish the current task before reporting an optional update, and never silently install it. Chat success/incomplete JSON may include a stable `updateAvailable: { current, latest, upgradeCommand, skillUpgradeCommand }`; successful whoami may append a stable notice. Stable notices share per-target-version local emission deduplication across both commands, saved after output rather than acknowledgment. Interactive terminal commands may also show beta notices for prerelease builds; beta notices are not deduplicated. A stable version installed via `@beta` cannot be identified as beta and receives no beta notice. Skills/sessions JSON arrays remain unchanged. npm discovery uses a best-effort 24-hour cache and short timeout; failure leaves the task result and exit status intact.
+Agents finish the current task before reporting an optional update and never silently install it. Use the site-provided command and `msc guide` for any required or optional upgrade, requesting permission before installing or switching the CLI or Skill. Never follow a generic server message to a different site.
 
-Local notification deduplication is best-effort, not exactly-once: simultaneous processes or an unwritable cache can repeat notices.
-
-Online requests carry `X-Agent-Cli-Version`. CMS `CliVersionPolicy` covers whoami/chat/sessions/skills/attachments: `enabled` defaults true and false is the emergency disable. Blank `minSupportedVersion` uses the CLI package version bundled in the BFF build (0.1.4 for this release); a custom stable SemVer can raise or lower it. Clearing the minimum restores the baseline, not disabled enforcement. Headerless Bearer requests are legacy CLI and normally receive `426` (prewarm exception below); headerless browser-cookie/anonymous requests are unaffected (this is not an authentication boundary). Cached policy reads use save-triggered invalidation and periodic revalidation, not simultaneous cross-instance activation. CMS failure uses a valid available cache or `503`, never an upgrade refusal. Local help/version/guide/logout and browser login remain available. A whoami exit 1 is not always a session failure: distinguish upgrade refusal, service/network failure and actual authentication failure before asking for re-login.
-
-For `CLI_UPGRADE_REQUIRED` (`10010`, HTTP `426`, `upgrade_cli`), explain that recovery installs the stable CLI and Skill, including a switch from beta if applicable. Ask permission for **both** global installations, then run in order:
-
-Old clients may not decode `upgrade_cli`; the server's actionable message still supplies both commands and requires permission first. CLI publication does not deploy the BFF: publish 0.1.4 and sync the matching public Skill before deploying/activating the BFF build containing the updated CLI manifest.
-
-The sole legacy transport exception is an upgrade refusal for **headerless Bearer `POST /api/sessions/prewarm`**: HTTP `200` SSE `event:error` carries flat `{ err_code: 10010, message: <full permission-first commands> }`, with no `session_ready` or upstream work. The old CLI exits 1 and exposes `errCode: 10010` and the message, but no `httpStatus`. Stamped clients and all other interfaces retain `426`; CMS failure stays `503`, never this SSE conversion.
-
-```bash
-npm install -g @302ai/media-studio-cli@latest
-npx -y skills add 302ai/msc-skill --skill msc-skill -g -y
-msc --version
-msc guide
-```
-
-If either install fails, stop automatic recovery and report which steps completed; do not claim success or automatically roll back the other install. Installing the Skill may not reload a running Agent's cached context; the guide refreshes immediate command knowledge.
-
-A `426` rejects only that request before upstream work or streaming; earlier stages may have side effects. Retry generation only when definitely unaccepted. Reuse any error `sessionId` with `--session`, never replay `--new`; inspect the existing session/artifacts if acceptance is uncertain. Accepted work and established SSE streams must not be terminated by a policy change.
+Online requests carry `X-Agent-Cli-Version` and `X-Agent-Cli-Package`. A `426` / `10010` upgrade refusal rejects that request before upstream work or streaming, but earlier stages may have side effects. An old headerless CLI may receive a prewarm SSE error with `errCode: 10010` and no HTTP status. A `503` is a service failure, not an upgrade refusal. Retry generation only when definitely unaccepted. Reuse any error `sessionId` with `--session`, never replay `--new`; inspect the existing session and artifacts if acceptance is uncertain.
 
 ## Safety
 
-Installation and authentication are deliberate user actions. The Agent must not read or copy `auth.json`, run `msc login` on the user's behalf, run `msc chat` without a media request, or silently choose another paid provider.
+Installation and authentication are deliberate user actions. With explicit sign-in permission the Agent may execute one-time-code login through trusted stdin. It must not read or copy `auth.json`, expose the code, run `msc chat` without a media request, or silently choose another paid provider.
