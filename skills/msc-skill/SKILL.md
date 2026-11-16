@@ -2,7 +2,7 @@
 name: msc-skill
 description: "Create or edit images, videos, avatars, speech, music, audio, or 3D assets with Media Studio. Use when the user requests new synthetic multimodal output and has not selected a provider; prefer the installed msc CLI."
 metadata:
-  version: 0.1.7
+  version: 0.1.8
   channel: stable
 ---
 
@@ -23,7 +23,27 @@ Use this Agent Skill to route suitable media requests to the Media Studio CLI (`
 
 Check Node.js 22 or newer, whether `msc` is installed, and whether this Agent Skill is installed. These checks must be read-only. If Node.js 22 or newer is unavailable, stop and explain the prerequisite; do not install or upgrade Node.js, modify PATH, or change shell configuration.
 
-Use the install command and site supplied by the Media Studio `/agent-cli` page's copied setup instruction. If the user opened a site's `/SKILL.md` or otherwise specified a site but did not supply that instruction, ask them to copy and share the setup instruction from that site's `/agent-cli` page before using an installed CLI; its current site might differ. If no site was specified and `msc` is installed, use its current `msc guide` to identify its package, channel and site. If neither provides a usable command and target, ask the user to open their Media Studio site's `/agent-cli` page and share its copied setup instruction; stop rather than guessing a site. The Skill's `metadata.channel` identifies its distribution, not the CLI's site or channel. Beta targets the testing site only.
+<!-- CLI_INSTALLATION_START -->
+### Install the CLI
+
+The CLI and this Agent Skill are separate installations; installing the Skill does not install `msc`. Node.js 22 or newer is required. Choose exactly one production site and use only its command:
+
+**Global — https://media.302.ai**
+
+```bash
+npm install -g @302ai/media-studio-cli@latest
+```
+
+**Mainland China — https://media.302ai.cn**
+
+```bash
+npm install -g @302ai/media-studio-cli-cn@latest
+```
+
+Do not install both packages or select a package from an installed CLI's version number. Agents must ask explicit permission before running the selected command. A same-origin website replaces this section with the single command for that website.
+<!-- CLI_INSTALLATION_END -->
+
+Use the install command and site supplied by the Media Studio `/agent-cli` page's copied setup instruction when available. Otherwise, use the `Install for <origin>` command on that site's `/SKILL.md`, or select the exact intended production site from the installation section above. If no site was specified, ask which site the user intends to use; do not guess from an installed CLI or use its current site without verification. The Skill's `metadata.channel` identifies its distribution, not the CLI's site or channel.
 
 If `msc` is installed, run `msc --version` and `msc guide` before any online command. Compare the guide's `Package:`, `Channel:` and `Site:` with the site-provided command and site. A version alone cannot identify the package or channel. If those fields are absent, or any field differs, treat the installation as incompatible; do not log in or perform media work with it. Explain the mismatch and ask permission to install the site's CLI, including permission to replace or remove the existing global CLI if necessary. If permission is denied, the installation method is unknown, or installation fails, stop and report what is missing. Preserve credentials, configuration, and user work; never remove them as part of a switch.
 
@@ -49,7 +69,7 @@ msc whoami
 
 For user-authorized login:
 
-1. Run `msc login --json`. `status: "authorization_required"` with exit 2 means pending. Give the user the single `sites[0].authorizationUrl` link; ask them to open it, sign in if needed, and share the one-time code. The code authorizes this login; no extra confirmation is needed.
+1. Run `msc login --json`. `status: "authorization_required"` with exit 2 means pending; follow `nextStep: "open_authorization_url"`. If an interactive browser tool is available, open the single `sites[0].authorizationUrl` in a new tab and leave sign-in to the user if needed. Otherwise give the user the URL to open and ask for the one-time code. The code authorizes this login; no extra confirmation is needed.
    - Website 302 sign-in uses a full-page redirect in the same tab and returns to the code page.
    - Each code works once within five minutes; generating another does not invalidate earlier unused codes. Chat or tool history may retain it, so it must only be shared with a trusted Agent.
    - Pass it directly to `msc login --with-code --json` via the execution environment's stdin input and close stdin (EOF). Do not echo it or embed it in a shell command. If the browser and CLI share a macOS clipboard, `pbpaste | msc login --with-code --json` is an alternative. The input must be non-TTY, nonempty and at most 4096 bytes including whitespace.
@@ -83,6 +103,8 @@ msc chat "<refinement prompt>" --json
 
 Always pass `--json` to receive structured output on stdout (diagnostics, progress, and spinners go to stderr).
 
+The CLI skips the website's price-confirmation setting for each chat turn, including when continuing a web-created session. Other clarification questions still apply, and insufficient balance still prevents generation.
+
 ### Interpreting `--json` chat output
 
 The output is a JSON object with one of three `status` values:
@@ -94,12 +116,17 @@ Fields in success/incomplete turns:
 - `sessionId`: The session identifier upstream.
 - `text`: Model commentary, planning, explanation, or a pending `AskUserQuestion` with numbered options. When questions are present, show them to the user and send the user's explicit answer in the next `msc chat` turn; never select the recommended option automatically or treat the completed stream as approval.
 - `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`. Milestone bodies follow the installed site's language; only the `[step]`/`[result]` prefix and toolCallId are stable.
-- `media`: Array of generated assets. Each item has:
+- `media`: Array of generated assets; a dry-run price quote is not an asset and never appears here. Each item has:
   - `status`: `"completed"`
   - `domain`: `"image"`, `"video"`, `"audio"`, etc.
   - `resultUrl`: The permanent stored asset URL. Persist, pass to downstream tools, or save this URL unchanged.
-  - `openUrl`: The display URL whenever `resultUrl` exists; it may be identical. Provide it to the user for previewing.
+  - `openUrl`: The remote preview URL whenever `resultUrl` exists; it may be identical. Use it only as a fallback when local download fails.
+  - `localPath`: The absolute local path after the CLI downloads the artifact. Prefer displaying it through the host's local-file/media attachment capability; do not download the artifact again. Only results on Media Studio storage are downloaded; an item on any other host has neither `localPath` nor `downloadError`, so use its remote URLs.
+  - `fileUrl`: The `file://` URL corresponding to `localPath`. Provide it when the host cannot attach local files; do not treat it as a general web-page URL.
+  - `downloadError`: Present when local saving failed. Explain the failure and offer the remote `openUrl`/`resultUrl`; the generated asset is still available remotely.
   - `modelUsed`, `taskId`: Generation metadata.
+
+The default output directory is `~/Downloads/media-studio-cli/` (the native equivalent on Windows). Use `msc config get output-dir --json` to read the effective directory, `msc config set output-dir <path> --json` to set it, and `msc config unset output-dir --json` to restore the default. All three print `{ "outputDir": "/absolute/path", "source": "default" | "configured" }`. `get` is read-only; `chat` creates the directory only when downloading. The CLI also downloads media received before an `incomplete` stream ends.
 - Optional `updateAvailable: { current, latest, upgradeCommand, skillUpgradeCommand }`: Finish the current task, then tell the user about the update. Compare the commands with the current `msc guide` and site instruction; never silently install or switch package or channel. Obtain explicit permission before each global installation.
 
 ### Attaching local files
@@ -139,7 +166,7 @@ Branch on `nextStep` rather than parsing error message prose:
 - `none`: Unrecoverable error. Report `message` to the user.
 - `upgrade_cli`: `CLI_UPGRADE_REQUIRED` (`10010`, HTTP `426`); follow the permission-required recovery below.
 
-If stdout is empty and exit code is 1, inspect stderr: parser errors and transport failures in other commands may have no JSON payload. `msc login --json` emits `{status:"authorization_required",sites:[{authorizationUrl}]}` and exits 2 while waiting for user authorization. `msc login --with-code --json` emits one success `{status:"success",apiUrl,uid,username?}` after save, or the shared structured error on failure. Login JSON never includes a code/token. `whoami` and `logout` do not support `--json`.
+If stdout is empty and exit code is 1, inspect stderr: parser errors and transport failures in other commands may have no JSON payload. `msc login --json` emits `{status:"authorization_required",nextStep:"open_authorization_url",guidance:"...",sites:[{authorizationUrl}]}` and exits 2 while waiting for user authorization. `msc login --with-code --json` emits one success `{status:"success",apiUrl,uid,username?}` after save, or the shared structured error on failure. Login JSON never includes a code/token. `whoami` and `logout` do not support `--json`.
 
 ### Required CLI upgrade and safe recovery
 
