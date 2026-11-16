@@ -116,7 +116,7 @@ Fields in success/incomplete turns:
 - `sessionId`: The session identifier upstream.
 - `text`: Model commentary, planning, explanation, or a pending `AskUserQuestion` with numbered options. When questions are present, show them to the user and send the user's explicit answer in the next `msc chat` turn; never select the recommended option automatically or treat the completed stream as approval.
 - `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`. Milestone bodies follow the installed site's language; only the `[step]`/`[result]` prefix and toolCallId are stable.
-- `media`: Array of generated assets. Each item has:
+- `media`: Array of generated assets; a dry-run price quote is not an asset and never appears here. Each item has:
   - `status`: `"completed"`
   - `domain`: `"image"`, `"video"`, `"audio"`, etc.
   - `resultUrl`: The permanent stored asset URL. Persist, pass to downstream tools, or save this URL unchanged.
