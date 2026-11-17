@@ -14,19 +14,18 @@ Use this Agent Skill to route suitable media requests to the Media Studio CLI (`
 
 - Respect an explicitly selected provider. Use `msc` by default only when the user has not selected another provider.
 - Do not silently switch providers or incur costs. Explain the failure and ask the user what to do.
-- Never read, request, copy, or transmit `auth.json` or long-lived credentials. Handle a website one-time login code only for the user's explicitly authorized sign-in; pass it directly to stdin, without echoing it or putting it in argv, environment variables, files, shell history, logs or telemetry.
-- A user may paste the one-time code into chat to authorize this Agent; chat or tool history may retain it. Feed it to the CLI through stdin without repeating it. If stdin input is unavailable, use a direct clipboard pipe instead of embedding the code in a command.
+- Handle only the one-time website login code needed for the user's authorized sign-in. Pass it through `--with-code <code>` without repeating it.
 - Do not run `msc chat` until the user has requested a specific media task and setup is ready.
 - Treat global package and Agent Skill installation as permission-required changes to the user's machine.
 
 ## Setup
 
-Check Node.js 22 or newer, whether `msc` is installed, and whether this Agent Skill is installed. These checks must be read-only. If Node.js 22 or newer is unavailable, stop and explain the prerequisite; do not install or upgrade Node.js, modify PATH, or change shell configuration.
+Use the site-matching commands below. Node.js 22+ is required. After installing or updating the CLI, install or update `msc-skill` as well; they are independent components.
 
 <!-- CLI_INSTALLATION_START -->
 ### Install the CLI
 
-The CLI and this Agent Skill are separate installations; installing the Skill does not install `msc`. Node.js 22 or newer is required. Choose exactly one production site and use only its command:
+Choose exactly one production site and use only its command:
 
 **Global — https://media.302.ai**
 
@@ -40,44 +39,19 @@ npm install -g @302ai/media-studio-cli@latest
 npm install -g @302ai/media-studio-cli-cn@latest
 ```
 
-Do not install both packages or select a package from an installed CLI's version number. Agents must ask explicit permission before running the selected command. A same-origin website replaces this section with the single command for that website.
 <!-- CLI_INSTALLATION_END -->
 
-Use the install command and site supplied by the Media Studio `/agent-cli` page's copied setup instruction when available. Otherwise, use the `Install for <origin>` command on that site's `/SKILL.md`, or select the exact intended production site from the installation section above. If no site was specified, ask which site the user intends to use; do not guess from an installed CLI or use its current site without verification. The Skill's `metadata.channel` identifies its distribution, not the CLI's site or channel.
+1. Install or update the CLI, then the Skill. Run `msc guide` and confirm `Package:`, `Channel:` and `Site:` match the intended site. For a local site, use a matching local build.
+2. Run `msc whoami`. If a fresh login is needed, follow the three steps below. Use `msc doctor` for installation/PATH problems.
+3. Start a new Agent session if the updated Skill is not loaded.
 
-If `msc` is installed, run `msc --version` and `msc guide` before any online command. Compare the guide's `Package:`, `Channel:` and `Site:` with the site-provided command and site. A version alone cannot identify the package or channel. If those fields are absent, or any field differs, treat the installation as incompatible; do not log in or perform media work with it. Explain the mismatch and ask permission to install the site's CLI, including permission to replace or remove the existing global CLI if necessary. If permission is denied, the installation method is unknown, or installation fails, stop and report what is missing. Preserve credentials, configuration, and user work; never remove them as part of a switch.
+## Authentication
 
-If `msc` is missing, ask explicit permission before running the site-provided install command. If replacing an npm-installed CLI with a different package, the shared `msc` executable may require removing the old global package first; identify it using read-only package-manager information and obtain explicit permission before removal. Do not remove a CLI managed by an unknown installer. After installation or switching, run `msc --version` and `msc guide`, and verify the package, channel and site again. Then sign in with `msc login`: each package and channel uses its own configuration directory, and an upgrade to this version does not read credentials written by an earlier version. Do not copy, migrate or reuse another installation's credential files.
+1. Run `msc login --json` and open the single `sites[0].authorizationUrl` in a browser tool, or give it to the user.
+2. Ask for the new one-time code and run `msc login --with-code <code> --json`. Codes expire in five minutes and work once; request a new one after a failed or uncertain exchange.
+3. Run `msc whoami` to verify. `whoami` has no `--json` flag.
 
-For a local development site, published npm packages target production or testing, not localhost. Use a local development build whose guide reports the matching local site; if one is unavailable, stop and explain. Do not substitute a published package.
-
-If `msc-skill` is not installed and this Agent supports Agent Skills, use the current `msc guide` to find the recommended Skill installation command. Ask for explicit permission before installing or switching it; do not reinstall an existing Skill or modify Agent configuration without permission. If permission is denied or installation fails, stop and report what is missing. A newly installed Skill may not load in the current session: use this document and `msc guide` for this session, and start a new Agent session to load the Skill.
-
-If this Agent does not support Agent Skills, explain that the Skill cannot be installed for it. Use this document and `msc guide` in the current session; do not claim the Skill was installed.
-
-## Authentication check
-
-Once `msc` is available, read `msc guide` and check authentication:
-
-```bash
-msc whoami
-```
-
-`msc doctor` reports whether the installed CLI matches its channel's dist-tag, how many distinct `msc` installations PATH resolves (and which one wins), and whether it lives under npm's global prefix. A development build is not compared with npm nor checked against the global prefix. It needs no login and changes no credentials, sessions or installation; it refreshes the update-check cache.
-
-`msc whoami` has **no `--json` flag**. It contacts the platform directly, exits 0 and reports `Authenticated` only when the platform validates the session. Exit 1 alone does not mean re-login: an upgrade refusal (`10010`, HTTP `426`, `upgrade_cli`) needs the upgrade recovery below; policy unavailability (`503`) needs service recovery, not installation or re-login; network failures need connectivity diagnosis. Only an actual missing, expired or invalid session calls for user-authorized login. The `Server:` line names the host contacted.
-
-For user-authorized login:
-
-1. Run `msc login --json`. `status: "authorization_required"` with exit 2 means pending; follow `nextStep: "open_authorization_url"`. If an interactive browser tool is available, open the single `sites[0].authorizationUrl` in a new tab and leave sign-in to the user if needed. Otherwise give the user the URL to open and ask for the one-time code. The code authorizes this login; no extra confirmation is needed.
-   - Website 302 sign-in uses a full-page redirect in the same tab and returns to the code page.
-   - Each code works once within five minutes; generating another does not invalidate earlier unused codes. Chat or tool history may retain it, so it must only be shared with a trusted Agent.
-   - Pass it directly to `msc login --with-code --json` via the execution environment's stdin input and close stdin (EOF). Do not echo it or embed it in a shell command. If the browser and CLI share a macOS clipboard, `pbpaste | msc login --with-code --json` is an alternative. The input must be non-TTY, nonempty and at most 4096 bytes including whitespace.
-   - The CLI exchanges the code only with its built-in site. An uncertain failure may have consumed the code: ask for a new code rather than automatically replaying it. Input, exchange, validation or atomic-save failure preserves old credentials. The resulting CLI session is independent of the website session.
-2. Continue only after `--with-code` exits 0 with `status: "success"`. A person using an interactive terminal can instead run `msc login` and paste the code at its masked prompt.
-3. Run `msc whoami` again to verify the session.
-
-Report whether setup is ready; if the user has not requested a specific creative task, wait for one before generating.
+For `upgrade_cli` or `503`, follow the recovery guidance below instead of repeating login.
 
 ## Core workflow
 
@@ -166,7 +140,7 @@ Branch on `nextStep` rather than parsing error message prose:
 - `none`: Unrecoverable error. Report `message` to the user.
 - `upgrade_cli`: `CLI_UPGRADE_REQUIRED` (`10010`, HTTP `426`); follow the permission-required recovery below.
 
-If stdout is empty and exit code is 1, inspect stderr: parser errors and transport failures in other commands may have no JSON payload. `msc login --json` emits `{status:"authorization_required",nextStep:"open_authorization_url",guidance:"...",sites:[{authorizationUrl}]}` and exits 2 while waiting for user authorization. `msc login --with-code --json` emits one success `{status:"success",apiUrl,uid,username?}` after save, or the shared structured error on failure. Login JSON never includes a code/token. `whoami` and `logout` do not support `--json`.
+If stdout is empty and exit code is 1, inspect stderr: parser errors and transport failures in other commands may have no JSON payload. `msc login --json` emits `{status:"authorization_required",nextStep:"open_authorization_url",guidance:"...",sites:[{authorizationUrl}]}` and exits 2 while waiting for user authorization. `msc login --with-code <code> --json` emits one success `{status:"success",apiUrl,uid,username?}` after save, or the shared structured error on failure. Login JSON never includes a code/token. `whoami` and `logout` do not support `--json`.
 
 ### Required CLI upgrade and safe recovery
 
