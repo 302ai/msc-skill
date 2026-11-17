@@ -54,11 +54,11 @@ The guide identifies the installed package, channel and site and provides its re
 
 ### Full setup
 
-The `/agent-cli` page displays `Set up <origin>/SKILL.md` but copies the browser site's install command and expanded setup, account, conditional trial-credit, and authentication guidance. If copying fails, a dialog provides the full text for manual selection. The canonical Skill lists both production CLI commands so a manual copy can select the intended site. On either production origin, same-origin `/SKILL.md` replaces that section with one trusted domain-specific command and no shared caching; other origins expose no public CLI installation command and never fall back to a production package. The Skill compares the installed CLI's package, channel and site from `msc guide` against the copied instruction before any online command, asks before installing or switching, and waits for a specific media request. The user completes website sign-in in their browser. A newly installed Skill may require a new Agent session; the current session can follow the Skill and `msc guide`.
+The `/agent-cli` page copies concise numbered setup steps: install or update the CLI, then `msc-skill`, verify with `msc guide`, authenticate, and verify with `msc whoami`. Its CN text is Chinese; other sites use English. Both production origins serve the same canonical `/SKILL.md`, unchanged. It lists both production install commands; the Agent asks the user which site to use before running either.
 
-For authentication, `msc login --json` exits 2 with `status: "authorization_required"`, `nextStep: "open_authorization_url"` and one `sites[0].authorizationUrl`. An Agent with an interactive browser tool opens that link in a new tab; otherwise the user opens it. The user signs in if needed and shares the displayed one-time code. Pass it to `msc login --with-code --json` through stdin/EOF and check `msc whoami` (which has no `--json` flag).
+For authentication, `msc login --json` exits 2 with `status: "authorization_required"`, `nextStep: "open_authorization_url"` and one `sites[0].authorizationUrl`. An Agent with an interactive browser tool opens that link in a new tab; otherwise the user opens it. The user signs in if needed and shares the displayed one-time code. Pass it to `msc login --with-code <code> --json` and check `msc whoami` (which has no `--json` flag). Do not use the host clipboard: sandboxed Agents cannot read it.
 
-Codes expire in five minutes and work once. Generating another code does not invalidate earlier unused codes. Chat or Agent tools may retain a pasted code; keep it out of command arguments, environment variables, files and logs. Never copy `auth.json`.
+Codes expire in five minutes and work once. Generating another code does not invalidate earlier unused codes. Chat or Agent tools may retain a pasted code. Never copy `auth.json`.
 
 ## Required and optional updates
 
@@ -68,4 +68,4 @@ Online requests carry `X-Agent-Cli-Version` and `X-Agent-Cli-Package`. A `426` /
 
 ## Safety
 
-Installation and authentication are deliberate user actions. With explicit sign-in permission the Agent may execute one-time-code login through trusted stdin. It must not read or copy `auth.json`, expose the code, run `msc chat` without a media request, or silently choose another paid provider.
+Installation and authentication are deliberate user actions. With explicit sign-in permission the Agent may execute one-time-code login with `--with-code <code>`. It must not read or copy `auth.json`, expose the code, run `msc chat` without a media request, or silently choose another paid provider.
