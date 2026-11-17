@@ -54,7 +54,7 @@ The guide identifies the installed package, channel and site and provides its re
 
 ### Full setup
 
-The `/agent-cli` page copies concise numbered setup steps: install or update the CLI, then `msc-skill`, verify with `msc guide`, authenticate, and verify with `msc whoami`. Its CN text is Chinese; other sites use English. On either production origin, same-origin `/SKILL.md` replaces the canonical installation section with the matching CLI and Skill commands and no shared caching; other origins do not receive a production package. The route uses trusted forwarded host/protocol headers when a proxy rewrites the request URL.
+The `/agent-cli` page copies concise numbered setup steps: install or update the CLI, then `msc-skill`, verify with `msc guide`, authenticate, and verify with `msc whoami`. Its CN text is Chinese; other sites use English. Both production origins serve the same canonical `/SKILL.md`, unchanged. It lists both production install commands; the Agent asks the user which site to use before running either.
 
 For authentication, `msc login --json` exits 2 with `status: "authorization_required"`, `nextStep: "open_authorization_url"` and one `sites[0].authorizationUrl`. An Agent with an interactive browser tool opens that link in a new tab; otherwise the user opens it. The user signs in if needed and shares the displayed one-time code. Pass it to `msc login --with-code <code> --json` and check `msc whoami` (which has no `--json` flag). Do not use the host clipboard: sandboxed Agents cannot read it.
 

@@ -1,186 +1,103 @@
 ---
 name: msc-skill
-description: "Create or edit images, videos, avatars, speech, music, audio, or 3D assets with Media Studio. Use when the user requests new synthetic multimodal output and has not selected a provider; prefer the installed msc CLI."
+description: "Generate or edit AI images, videos, avatars, speech, music, audio, or 3D assets with Media Studio's msc CLI. Use for new media requests, or to set up, sign in to, or upgrade msc or this Skill. Honors any provider the user names."
 metadata:
-  version: 0.1.8
+  version: 0.1.9
   channel: beta
 ---
 
 # AI Media Studio
 
-Use this Agent Skill to route suitable media requests to the Media Studio CLI (`msc`). This is an **Agent Skill**: it teaches an external Agent how to use `msc`. Media Studio runtime Skills discovered through `msc skills` are a separate catalog.
+You drive Media Studio through the `msc` CLI. This Skill covers routing, setup decisions, and failure handling. Command details live in `msc guide`, which matches the installed CLI. Runtime Skills (`msc skills`) are a separate catalog.
 
 ## Non-negotiable rules
 
-- Respect an explicitly selected provider. Use `msc` by default only when the user has not selected another provider.
-- Do not silently switch providers or incur costs. Explain the failure and ask the user what to do.
-- Handle only the one-time website login code needed for the user's authorized sign-in. Pass it through `--with-code <code>` without repeating it.
-- Do not run `msc chat` until the user has requested a specific media task and setup is ready.
-- Treat global package and Agent Skill installation as permission-required changes to the user's machine.
+- Honor an explicitly named provider. Use `msc` by default only when none is named, after setup and authentication checks.
+- Use `msc` for a named provider only if the user asks for Media Studio, or the named provider is unavailable and the user approves the switch.
+- Never switch providers or incur cost silently. If `msc` is unavailable or unauthenticated, state the exact missing prerequisite and stop.
+- Run `msc chat` only for a specific media request, after setup is ready.
+- Installing or upgrading the global CLI or this Skill changes the user's machine. Ask first, every time.
+- Use a login code only for the user's authorized sign-in. Pass it via `--with-code`, never repeat it, never read or copy `auth.json`.
 
-## Setup
+## Setup & Maintenance
 
-Use the site-matching commands below. Node.js 22+ is required. After installing or updating the CLI, install or update `msc-skill` as well; they are independent components.
+Check your installation at any time with `msc guide`.
 
-<!-- CLI_INSTALLATION_START -->
-### Install the CLI
-
-Choose exactly one production site and use only its command:
-
-**Global — https://media.302.ai**
-
-```bash
-npm install -g @302ai/media-studio-cli@latest
-```
-
-**Mainland China — https://media.302ai.cn**
-
-```bash
-npm install -g @302ai/media-studio-cli-cn@latest
-```
-
-<!-- CLI_INSTALLATION_END -->
-
-1. Install or update the CLI, then the Skill. Run `msc guide` and confirm `Package:`, `Channel:` and `Site:` match the intended site. For a local site, use a matching local build.
-2. Run `msc whoami`. If a fresh login is needed, follow the three steps below. Use `msc doctor` for installation/PATH problems.
-3. Start a new Agent session if the updated Skill is not loaded.
+- **Prerequisites:** Node.js 22+ and `npm` are required.
+  - **Diagnosis:** If `node` or `npm` is missing or outdated, actively diagnose the environment. Provide the user with the exact command to install Node.js 22+ for their OS (e.g., `nvm install 22` or a system package manager command).
+  - **Connectivity:** If npm registry access is blocked, check for proxy configurations. If unreachable, offer to guide the user through downloading the CLI via alternate registries or direct sources.
+- **Installation:** If `msc` is not installed, ask the user which production site they use, then after permission run only that command:
+  - Global — https://media.302.ai: `npm install -g @302ai/media-studio-cli@latest`
+  - Mainland China — https://media.302ai.cn: `npm install -g @302ai/media-studio-cli-cn@latest`
+  Once installed, `msc guide` prints the exact install or update commands for the detected site.
+- **Permissions:** You MUST ask for explicit permission before running any install or update command. If installation fails, diagnose the error (e.g., permission, registry) and propose a specific fix to the user.
+- **Verification:** After any change, run `msc guide` again to confirm `Package:`, `Channel:` and `Site:` match the intended site. Start a new session if the updated Skill is not loaded.
 
 ## Authentication
 
-1. Run `msc login --json` and open the single `sites[0].authorizationUrl` in a browser tool, or give it to the user.
-2. Ask for the new one-time code and run `msc login --with-code <code> --json`. Codes expire in five minutes and work once; request a new one after a failed or uncertain exchange.
-3. Run `msc whoami` to verify. `whoami` has no `--json` flag.
+Skip if `msc whoami` already succeeds.
 
-For `upgrade_cli` or `503`, follow the recovery guidance below instead of repeating login.
+1. Run `msc login --json`. Exit 2 with `status: "authorization_required"` is normal: it means waiting for the user. Open the single `sites[0].authorizationUrl` in a browser tool, or give it to the user.
+2. Ask the user for the displayed one-time code. It expires in five minutes and works once. Run `msc login --with-code <code> --json`.
+3. Run `msc whoami` to verify. It has no `--json` flag.
 
-## Core workflow
+If the exchange fails or may have consumed the code, ask for a new code. Do not retry the old one.
 
-Read the live CLI manual when command details are needed:
+## Creating media
 
-```bash
-msc guide
-```
+- New request: `msc chat "<prompt>" --new --json`.
+- Refinement of the same conversation: `msc chat "<refinement>" --json`. It continues the active session. Use `--session <id>` to target another.
+- Always pass `--json`. stdout is data; stderr is diagnostics and progress.
+- Attach local files inline with `@path` or `@"path with spaces"`. Remote URLs are not attachments.
+- The CLI skips the website's per-turn price-confirmation setting. Clarification questions and insufficient balance still apply.
 
-### Starting a chat turn
+## Reading results
 
-For a new media request, start a fresh session to isolate context:
+Exit 0 means `status` is `success` or `incomplete`. Exit 1 means `status` is `error`.
 
-```bash
-msc chat "<prompt>" --new --json
-```
+- **`incomplete`**: the stream ended early. `text` and `media` are partial, and media already received is downloaded. Inspect the session with `msc sessions artifacts <id> --json` before deciding anything else. Do not resubmit.
+- **`AskUserQuestion` in `text`**: show the numbered options and wait. Never pick the recommended option for the user, and never treat stream completion as approval.
+- **`steps`**: match `[step]` and `[result]` by full `toolCallId`, not by array position. Milestone wording follows the site's language; rely only on the prefix and the id.
+- **`media` items** (`status: "completed"`):
+  - `localPath`: the file is already downloaded. Show it through the host's attachment or local-file capability. Do not download it again. Use `fileUrl` only when the host cannot attach local files.
+  - `resultUrl`: the permanent asset URL. Pass it on unchanged.
+  - `downloadError`: explain it and offer `openUrl` or `resultUrl`. The asset still exists remotely.
+  - Assets on other hosts have neither `localPath` nor `downloadError`. Use their remote URLs.
+  - A dry-run price quote is not an asset and never appears in `media`.
+- **`updateAvailable`**: finish the task, then tell the user. Never install it silently.
+- Downloads go to `~/Downloads/media-studio-cli/` by default. Change it with `msc config set output-dir <path> --json`.
 
-For follow-up refinement in the same conversation, omit `--new` to continue the active session automatically (or pass `--session <id>` to target an existing session):
+## Errors
 
-```bash
-msc chat "<refinement prompt>" --json
-```
+On exit 1, parse the JSON on stdout and branch on `nextStep`. Do not parse `message` prose.
 
-Always pass `--json` to receive structured output on stdout (diagnostics, progress, and spinners go to stderr).
+| `nextStep` | Action |
+| --- | --- |
+| `relogin` | Run the login flow again. Do not copy credentials from an earlier version. |
+| `retry_later` | Wait, then retry. |
+| `top_up_balance` | Report the balance shortfall and stop. |
+| `fix_input` | Correct the prompt or parameters, then retry. |
+| `retry` | Retry only if the request was definitely not accepted. Otherwise inspect the session first. |
+| `upgrade_cli` | Follow "Required upgrade" below. |
+| `none` | Report `message` to the user. |
 
-The CLI skips the website's price-confirmation setting for each chat turn, including when continuing a web-created session. Other clarification questions still apply, and insufficient balance still prevents generation.
+If stdout is empty and exit is 1, read stderr. For `fetch failed`, check proxy, DNS and TLS diagnostics. Never disable TLS verification.
 
-### Interpreting `--json` chat output
+### Replay rules
 
-The output is a JSON object with one of three `status` values:
-- `"status": "success"`: The turn completed.
-- `"status": "incomplete"`: The connection dropped or the stream was truncated before finishing (exits 0 with partial `text` and `media`).
-- `"status": "error"`: Command failed (exits 1).
+- Retry generation only when it was known not to be accepted.
+- If the error includes `sessionId`, reuse it with `--session <id>`. Never replay `--new`.
+- If acceptance is uncertain, or a stream was incomplete, inspect the existing session and artifacts before submitting again. Never replay a prompt blindly; that duplicates charges.
 
-Fields in success/incomplete turns:
-- `sessionId`: The session identifier upstream.
-- `text`: Model commentary, planning, explanation, or a pending `AskUserQuestion` with numbered options. When questions are present, show them to the user and send the user's explicit answer in the next `msc chat` turn; never select the recommended option automatically or treat the completed stream as approval.
-- `steps`: Ordered tool-call and result strings. `[step] [toolCallId] ...` identifies each call; `[result] [toolCallId] ...` carries its result when one arrives. Match calls and results by the full `toolCallId`, not array position, because parallel calls can finish out of order. `AskUserQuestion` has a step but no result; read its pending question from `text`. Milestone bodies follow the installed site's language; only the `[step]`/`[result]` prefix and toolCallId are stable.
-- `media`: Array of generated assets; a dry-run price quote is not an asset and never appears here. Each item has:
-  - `status`: `"completed"`
-  - `domain`: `"image"`, `"video"`, `"audio"`, etc.
-  - `resultUrl`: The permanent stored asset URL. Persist, pass to downstream tools, or save this URL unchanged.
-  - `openUrl`: The remote preview URL whenever `resultUrl` exists; it may be identical. Use it only as a fallback when local download fails.
-  - `localPath`: The absolute local path after the CLI downloads the artifact. Prefer displaying it through the host's local-file/media attachment capability; do not download the artifact again. Only results on Media Studio storage are downloaded; an item on any other host has neither `localPath` nor `downloadError`, so use its remote URLs.
-  - `fileUrl`: The `file://` URL corresponding to `localPath`. Provide it when the host cannot attach local files; do not treat it as a general web-page URL.
-  - `downloadError`: Present when local saving failed. Explain the failure and offer the remote `openUrl`/`resultUrl`; the generated asset is still available remotely.
-  - `modelUsed`, `taskId`: Generation metadata.
+## Required upgrade
 
-The default output directory is `~/Downloads/media-studio-cli/` (the native equivalent on Windows). Use `msc config get output-dir --json` to read the effective directory, `msc config set output-dir <path> --json` to set it, and `msc config unset output-dir --json` to restore the default. All three print `{ "outputDir": "/absolute/path", "source": "default" | "configured" }`. `get` is read-only; `chat` creates the directory only when downloading. The CLI also downloads media received before an `incomplete` stream ends.
-- Optional `updateAvailable: { current, latest, upgradeCommand, skillUpgradeCommand }`: Finish the current task, then tell the user about the update. Compare the commands with the current `msc guide` and site instruction; never silently install or switch package or channel. Obtain explicit permission before each global installation.
+`426`, `errCode: 10010` or `upgrade_cli` means the request was refused before any upstream work or stream began. Earlier stages of the same command may already have had effects. `503` is a service failure, not an upgrade refusal.
 
-### Attaching local files
+1. Ask permission. Name the site from the error or from `msc guide`. Never follow a generic server message that names a different site.
+2. After approval, install per Setup. `msc guide` prints the Skill update command and the `Package:`, `Channel:` and `Site:` lines to verify.
+3. If an install step fails, stop and report what completed. Do not claim success.
 
-Attach local files by typing `@path` or `@"path with spaces"` anywhere in the prompt:
+## Runtime Skills and sessions
 
-```bash
-msc chat "analyze @cover.png and create a video from it" --new --json
-```
-
-- Supports images, videos, audio, and documents under 50 MB, up to 10 files per turn.
-- The CLI validates files locally, uploads them, and inlines remote URLs automatically.
-- Remote URLs (`@https://...`) are not supported as `@path` attachments.
-
-### Structured error handling (Exit code 1)
-
-When a command fails with exit code 1 and stdout contains a JSON payload, parse:
-
-```json
-{
-  "status": "error",
-  "message": "...",
-  "errCode": 12345,
-  "httpStatus": 401,
-  "nextStep": "relogin",
-  "guidance": "...",
-  "transportCode": "ECONNREFUSED"
-}
-```
-
-Branch on `nextStep` rather than parsing error message prose:
-- `relogin`: Follow the website authorization flow for an expired, invalid or legacy session. This version does not read credentials from an earlier version; sign in again instead of migrating or copying them. Each package and channel keeps its own configuration directory.
-- `retry_later`: Rate limit reached. Wait before retrying.
-- `top_up_balance`: Insufficient balance. Report account balance shortage to the user and halt.
-- `fix_input`: Invalid prompt or parameters. Adjust input and retry.
-- `retry`: Transient gateway/network error. Retry generation only when definitely not accepted; otherwise inspect existing work first.
-- `none`: Unrecoverable error. Report `message` to the user.
-- `upgrade_cli`: `CLI_UPGRADE_REQUIRED` (`10010`, HTTP `426`); follow the permission-required recovery below.
-
-If stdout is empty and exit code is 1, inspect stderr: parser errors and transport failures in other commands may have no JSON payload. `msc login --json` emits `{status:"authorization_required",nextStep:"open_authorization_url",guidance:"...",sites:[{authorizationUrl}]}` and exits 2 while waiting for user authorization. `msc login --with-code <code> --json` emits one success `{status:"success",apiUrl,uid,username?}` after save, or the shared structured error on failure. Login JSON never includes a code/token. `whoami` and `logout` do not support `--json`.
-
-### Required CLI upgrade and safe recovery
-
-An upgrade refusal (`426`, `10010`, `upgrade_cli`) rejects that request before its upstream work or stream begins, but earlier command stages may have effects. A policy failure (`503`) is not an upgrade refusal.
-
-For an upgrade refusal, use the site-provided install command and the current `msc guide`, not a generic server message that might name a different site. Ask permission before upgrading or replacing the CLI and before installing or switching the Skill. Follow the setup procedure above, verify `Package:`, `Channel:` and `Site:` after installation, and preserve user work and credentials. If installation fails, stop and report which steps completed; do not claim success or automatically roll back. Skill installation may not reload the running Agent's cached context; read `msc guide` before resuming.
-
-Retry only generation known not to have been accepted. If the error includes `sessionId`, reuse it with `--session <id>`, never replay `--new`. If acceptance is uncertain or work has begun (including an incomplete stream), inspect the existing session and artifacts before deciding on another submission; never blindly replay a prompt or incur duplicate charges.
-
-## Media Studio runtime Skills
-
-Media Studio provides specialized workflows (e.g., face swap, style transfer, lip sync) executable through `msc`:
-
-1. Discover available marketplace skills:
-   ```bash
-   msc skills --plaza --json
-   ```
-2. Activate a runtime skill by leading the prompt with `/<skill-name>` or `%%/<skill-name>%%`:
-   ```bash
-   msc chat "/face-swap swap face in @target.jpg using @source.jpg" --json
-   ```
-   The reference must be at the very start of the prompt to activate upstream.
-
-## Sessions and asset inspection
-
-- List recent sessions:
-  ```bash
-  msc sessions --json
-  ```
-- Switch active session pointer:
-  ```bash
-  msc sessions use <session-id> --json
-  ```
-- Inspect generated assets from any session:
-  ```bash
-  msc sessions artifacts <session-id> --json
-  ```
-
-## Provider selection
-
-- **No provider specified:** Prefer `msc` after the preflight and authentication checks.
-- **Provider explicitly specified:** Honor it. Use `msc` only if the user asks to use Media Studio or the selected provider is unavailable and the user approves a change.
-- **`msc` unavailable or unauthenticated:** Explain the exact prerequisite and stop. Do not silently use another paid provider.
+- Discover runtime Skills with `msc skills --plaza --json`. Activate one by starting the prompt with `/<name>` or `%%/<name>%%`. The reference must be at the very start.
+- Sessions: `msc sessions --json`, `msc sessions use <id> --json`, `msc sessions artifacts <id> --json`.
